@@ -1,6 +1,7 @@
 module Main where
 
 import Continuations
+import LParse
 
 data Command = Inv | Swap | Push | Pop | NE [Command] | NZ [Command]
 
@@ -38,7 +39,7 @@ exec :: Program -> [Bool] -> [Bool]
 exec p b = (\(_,r,_) -> r) $ simulate p (b,[],False)
 
 doExec :: String -> String -> String
-doExec pro par = run (parseProgram pro) (\(p,_) -> printRes $ exec p (parsePar par)) (const "ERR")
+doExec pro par = run (pFunc parseProgram pro) (\(p,_) -> printRes $ exec p (parsePar par)) (const "ERR")
 
 parsePar :: String -> [Bool]
 parsePar [] = []
@@ -50,33 +51,31 @@ printRes [] = []
 printRes (False:xs) = '0' : printRes xs
 printRes (True:xs) = '1' : printRes xs
 
-parseCommand :: String -> DCont r String (Command,String)
-parseCommand ('!':ss) = return (Inv,ss)
-parseCommand ('_':ss) = return (Swap,ss)
-parseCommand ('v':ss) = return (Push,ss)
-parseCommand ('^':ss) = return (Pop,ss)
-parseCommand ('(':ss) = parseNE ('(':ss)
-parseCommand ('[':ss) = parseNZ ('[':ss)
-parseCommand ss = throw "Expected Command!"
+parseProgram :: Parser r Program
+parseProgram = star parseCommand
 
-parseProgram :: String -> DCont r String (Program,String)
-parseProgram [] = return ([],[])
-parseProgram s@(')':ss) = return ([],s)
-parseProgram s@(']':ss) = return ([],s)
-parseProgram ss = do
-	(c,r) <- parseCommand ss
-	(p,r') <- parseProgram r
-	return (c:p,r')
+parseCommand :: Parser r Command
+parseCommand = cParse (not . null) (parseInv <|> parseSwap <|> parsePush <|> parsePop <|> parseNE <|> parseNZ <|> pFail "Expected Command") "Expected Command"
+
+parseInv :: Parser r Command
+parseInv = dPrefixParse "!" (constParse Inv)
+
+parseSwap :: Parser r Command
+parseSwap = dPrefixParse "_" (constParse Swap)
+
+parsePush :: Parser r Command
+parsePush = dPrefixParse "v" (constParse Push)
+
+parsePop :: Parser r Command
+parsePop = dPrefixParse "^" (constParse Pop)
+
+parseNE :: Parser r Command
+parseNE = dPrefixParse "(" (fmap NE parseProgram <.const.> remCB)
+    where remCB = cParse (not . null) (pParse tail noopParse) "Expected ')'"
 	
-parseNE :: String -> DCont r String (Command,String)
-parseNE ('(':ss) = do
-	(p,r) <- parseProgram ss
-	if (head r == ')') then return (NE p,tail r) else throw "Expected ')'"
-	
-parseNZ :: String -> DCont r String (Command,String)
-parseNZ ('[':ss) = do
-	(p,r) <- parseProgram ss
-	if (head r == ']') then return (NZ p,tail r) else throw "Expected ']'"
+parseNZ :: Parser r Command
+parseNZ = dPrefixParse "[" (fmap NZ parseProgram <.const.> remCB)
+    where remCB = cParse (not . null) (pParse tail noopParse) "Expected ']'"
 	
 main :: IO ()
 main = do
