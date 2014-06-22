@@ -12,6 +12,7 @@ parsePar :: String -> [Bool]
 parsePar [] = []
 parsePar ('0':ss) = False:parsePar ss
 parsePar ('1':ss) = True:parsePar ss
+parsePar _ = []
 
 printRes :: [Bool] -> String
 printRes [] = []
